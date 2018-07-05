@@ -74,25 +74,36 @@ final class FilesystemTestCase extends PhutilTestCase {
   }
 
   public function testWalkToRoot() {
+    $win_root = phutil_is_windows() ? getenv('HOMEDRIVE') : '';
     $test_cases = array(
       array(
-        dirname(__FILE__).'/data/include_dir.txt/subdir.txt/test',
+        Filesystem::joinPath(
+          dirname(__FILE__),
+          'data', 'include_dir.txt', 'subdir.txt', 'test'),
         dirname(__FILE__),
         array(
-          dirname(__FILE__).'/data/include_dir.txt/subdir.txt/test',
-          dirname(__FILE__).'/data/include_dir.txt/subdir.txt',
-          dirname(__FILE__).'/data/include_dir.txt',
-          dirname(__FILE__).'/data',
+          Filesystem::joinPath(
+            dirname(__FILE__),
+            'data', 'include_dir.txt', 'subdir.txt', 'test'),
+          Filesystem::joinPath(
+            dirname(__FILE__),
+            'data', 'include_dir.txt', 'subdir.txt'),
+          Filesystem::joinPath(dirname(__FILE__), 'data', 'include_dir.txt'),
+          Filesystem::joinPath(dirname(__FILE__), 'data'),
           dirname(__FILE__),
         ),
       ),
       array(
-        dirname(__FILE__).'/data/include_dir.txt/subdir.txt',
+        Filesystem::joinPath(
+          dirname(__FILE__),
+          'data', 'include_dir.txt', 'subdir.txt'),
         dirname(__FILE__),
         array(
-          dirname(__FILE__).'/data/include_dir.txt/subdir.txt',
-          dirname(__FILE__).'/data/include_dir.txt',
-          dirname(__FILE__).'/data',
+          Filesystem::joinPath(
+            dirname(__FILE__),
+            'data', 'include_dir.txt', 'subdir.txt'),
+          Filesystem::joinPath(dirname(__FILE__), 'data', 'include_dir.txt'),
+          Filesystem::joinPath(dirname(__FILE__), 'data'),
           dirname(__FILE__),
         ),
       ),
@@ -107,19 +118,28 @@ final class FilesystemTestCase extends PhutilTestCase {
 
       'root is not an ancestor of path' => array(
         dirname(__FILE__),
-        dirname(__FILE__).'/data/include_dir.txt/subdir.txt',
+        Filesystem::joinPath(
+          dirname(__FILE__), 'data', 'include_dir.txt', 'subdir.txt'),
         array(),
       ),
 
       'fictional paths work' => array(
         '/x/y/z',
         '/',
-        array(
-          '/x/y/z',
-          '/x/y',
-          '/x',
-          '/',
-        ),
+        phutil_is_windows() ?
+          array(
+            $win_root.'\\x\\y\\z',
+            $win_root.'\\x\\y',
+            $win_root.'\\x',
+            $win_root.'\\',
+          )
+        :
+          array(
+            '/x/y/z',
+            '/x/y',
+            '/x',
+            '/',
+          ),
       ),
 
     );

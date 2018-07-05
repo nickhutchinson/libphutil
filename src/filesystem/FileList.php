@@ -34,7 +34,8 @@ final class FileList extends Phobject {
     foreach ($paths as $path) {
       $path = Filesystem::resolvePath($path);
       if (is_dir($path)) {
-        $path = rtrim($path, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        list($drive, $path) = Filesystem::splitDrive($path);
+        $path = $drive.rtrim($path, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
         $this->dirs[$path] = true;
       }
       $this->files[] = $path;

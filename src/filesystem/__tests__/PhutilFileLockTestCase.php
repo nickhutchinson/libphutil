@@ -174,9 +174,14 @@ final class PhutilFileLockTestCase extends PhutilTestCase {
     $root = dirname(phutil_get_library_root('phutil'));
     $bin = $root.'/scripts/utils/lock.php';
 
-    // NOTE: Use `exec` so this passes on Ubuntu, where the default `dash` shell
-    // will eat any kills we send during the tests.
-    $future = new ExecFuture('exec php %s %C %s', $bin, $flags, $file);
+    if (phutil_is_windows()) {
+      $future = new ExecFuture('php %s %C %s', $bin, $flags, $file);
+    } else {
+      // NOTE: Use `exec` so this passes on Ubuntu,
+      // where the default `dash` shell will eat any
+      // kills we send during the tests.
+      $future = new ExecFuture('exec php %s %C %s', $bin, $flags, $file);
+    }
     $future->start();
     return $future;
   }
