@@ -6,10 +6,18 @@ final class PhutilDirectoryFixture extends Phobject {
 
   public static function newFromArchive($archive) {
     $obj = self::newEmptyFixture();
-    execx(
-      'tar -C %s -xzvvf %s',
-      $obj->getPath(),
-      Filesystem::resolvePath($archive));
+    $path = $obj->getPath();
+    $archive = Filesystem::resolvePath($archive);
+
+    if (phutil_is_windows()) {
+      $path = str_replace('\\', '/', $path);
+      $archive = str_replace('\\', '/', $archive);
+    }
+
+    execx('%C -C %s -xzvvf %s',
+      phutil_is_windows() ? 'tar --force-local' : 'tar',
+      $path,
+      $archive);
     return $obj;
   }
 
@@ -32,11 +40,17 @@ final class PhutilDirectoryFixture extends Phobject {
   }
 
   public function saveToArchive($path) {
+    $path = $this->getPath();
     $tmp = new TempFile();
 
-    execx(
-      'tar -C %s -czvvf %s .',
-      $this->getPath(),
+    if (phutil_is_windows()) {
+      $path = str_replace('\\', '/', $path);
+      $tmp = str_replace('\\', '/', $tmp);
+    }
+
+    execx('%C -C %s -czvvf %s .',
+      phutil_is_windows() ? 'tar --force-local' : 'tar',
+      $path,
       $tmp);
 
     $ok = rename($tmp, Filesystem::resolvePath($path));

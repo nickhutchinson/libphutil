@@ -339,14 +339,37 @@ final class Filesystem extends Phobject {
       foreach (self::listDirectory($path, true) as $child) {
         self::executeRemovePath($path.DIRECTORY_SEPARATOR.$child);
       }
-      $ok = rmdir($path);
+      $ok = @rmdir($path);
+
+      if (!$ok && phutil_is_windows()) {
+        // Windows, sigh.
+        for ($attempt = 0; !$ok && $attempt < 10; $attempt++) {
+          usleep(($attempt + 1) * 25000 /* 25ms */);
+          $ok = @unlink($path);
+        }
+      }
+
       if (!$ok) {
          throw new FilesystemException(
           $path,
           pht("Failed to remove directory '%s'!", $path));
       }
     } else {
-      $ok = unlink($path);
+      $ok = @unlink($path);
+
+      if (!$ok && phutil_is_windows()) {
+        // Windows, sigh. First, assume the file has the readonly bit set, and
+        // fix that.
+        @chmod($path, (fileperms($path) & 07777) | 0200);
+        $ok = @unlink($path);
+
+        // Otherwise, assume someone else has an open handle. Retry for a bit.
+        for ($attempt = 0; !$ok && $attempt < 10; $attempt++) {
+          usleep(($attempt + 1) * 25000 /* 25ms */);
+          $ok = @unlink($path);
+        }
+      }
+
       if (!$ok) {
         throw new FilesystemException(
           $path,
@@ -777,9 +800,14 @@ final class Filesystem extends Phobject {
    * @return list<string>  List of parent paths, including the provided path.
    * @task   directory
    */
-  public static function walkToRoot($path, $root = '/') {
+  public static function walkToRoot($path, $root = null) {
     $path = self::resolvePath($path);
-    $root = self::resolvePath($root);
+
+    if ($root == null) {
+      $root = phutil_is_windows() ? idx(self::splitDrive($path), 0).'\\' : '/';
+    } else {
+      $root = self::resolvePath($root);
+    }
 
     if (is_link($path)) {
       $path = realpath($path);
@@ -795,6 +823,8 @@ final class Filesystem extends Phobject {
       return array();
     }
 
+    list($drive, $path) = self::splitDrive($path);
+
     $walk = array();
     $parts = explode(DIRECTORY_SEPARATOR, $path);
     foreach ($parts as $k => $part) {
@@ -804,14 +834,10 @@ final class Filesystem extends Phobject {
     }
 
     while (true) {
-      if (phutil_is_windows()) {
-        $next = implode(DIRECTORY_SEPARATOR, $parts);
-      } else {
-        $next = DIRECTORY_SEPARATOR.implode(DIRECTORY_SEPARATOR, $parts);
-      }
+      $next = DIRECTORY_SEPARATOR.implode(DIRECTORY_SEPARATOR, $parts);
 
-      $walk[] = $next;
-      if ($next == $root) {
+      $walk[] = $drive.$next;
+      if ($drive.$next == $root) {
         break;
       }
 
@@ -837,7 +863,8 @@ final class Filesystem extends Phobject {
    */
   public static function isAbsolutePath($path) {
     if (phutil_is_windows()) {
-      return (bool)preg_match('/^[A-Za-z]+:/', $path);
+      list(, $p) = self::splitDrive($path);
+      return strlen($p) && ($p[0] == '\\' || $p[0] == '/');
     } else {
       return !strncmp($path, DIRECTORY_SEPARATOR, 1);
     }
@@ -854,19 +881,27 @@ final class Filesystem extends Phobject {
    * @task   path
    */
   public static function resolvePath($path, $relative_to = null) {
+    if (phutil_is_windows()) {
+      $path = str_replace('/', '\\', $path);
+      $relative_to = $relative_to
+        ? str_replace('/', '\\', $relative_to)
+        : $relative_to;
+    }
+
     $is_absolute = self::isAbsolutePath($path);
 
     if (!$is_absolute) {
       if (!$relative_to) {
         $relative_to = getcwd();
       }
-      $path = $relative_to.DIRECTORY_SEPARATOR.$path;
+      $path = self::joinPath($relative_to, $path);
     }
 
     if (is_link($path)) {
-      $parent_realpath = realpath(dirname($path));
+      list($parent, $base) = self::splitPath($path);
+      $parent_realpath = realpath($parent);
       if ($parent_realpath !== false) {
-        return $parent_realpath.DIRECTORY_SEPARATOR.basename($path);
+        return self::pathJoin($parent_realpath, $base);
       }
     }
 
@@ -879,22 +914,22 @@ final class Filesystem extends Phobject {
     // This won't work if the file doesn't exist or is on an unreadable mount
     // or something crazy like that. Try to resolve a parent so we at least
     // cover the nonexistent file case.
-    $parts = explode(DIRECTORY_SEPARATOR, trim($path, DIRECTORY_SEPARATOR));
-    while (end($parts) !== false) {
-      array_pop($parts);
-      if (phutil_is_windows()) {
-        $attempt = implode(DIRECTORY_SEPARATOR, $parts);
-      } else {
-        $attempt = DIRECTORY_SEPARATOR.implode(DIRECTORY_SEPARATOR, $parts);
-      }
-      $realpath = realpath($attempt);
+    list($head, $tail) = self::splitPath($path);
+    while (true) {
+      $realpath = realpath($head);
       if ($realpath !== false) {
-        $path = $realpath.substr($path, strlen($attempt));
-        break;
+        return self::joinPath($realpath, $tail);
       }
-    }
 
-    return $path;
+      list($head2, $tail2) = self::splitPath($head);
+      if ($head == $head2) {
+        // Reached the root without being able to resolve anything. Bail.
+        return self::joinPath($head, $tail);
+      }
+
+      $head = $head2;
+      $tail = self::joinPath($tail2, $tail);
+    }
   }
 
   /**
@@ -937,7 +972,8 @@ final class Filesystem extends Phobject {
     }
 
     foreach (array($pwd, self::resolvePath($pwd)) as $parent) {
-      $parent = rtrim($parent, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+      list($drive, $parent) = self::splitDrive($parent);
+      $parent = $drive.rtrim($parent, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
       $len = strlen($parent);
       if (!strncmp($parent, $path, $len)) {
         $path = substr($path, $len);
@@ -974,6 +1010,110 @@ final class Filesystem extends Phobject {
     return self::resolveBinary($binary) !== null;
   }
 
+  /**
+   * Split a pathname.
+   * Return tuple (head, tail) where tail is everything after the final slash.
+   * Either part may be empty. Follows Python 3.6's os.path.split; more robust
+   * than PHP's dirname()/basename().
+   */
+  public static function splitPath($p) {
+    if (phutil_is_windows()) {
+      $sep = '\\';
+      $altsep = '/';
+      $seps = '/\\';
+    } else {
+      $sep = $altsep = $seps = '/';
+    }
+
+    $p = (string)$p;
+    list($d, $p) = self::splitDrive($p);
+
+    // set i to index beyond p's last slash
+    $i = strlen($p);
+    while ($i && $p[$i - 1] != $sep && $p[$i - 1] != $altsep) {
+      $i -= 1;
+    }
+    $head = substr($p, 0, $i);
+    $tail = substr($p, $i);  // now tail has no slashes
+    // remove trailing slashes from head, unless it's all slashes
+    $head = nonempty(rtrim($head, $seps), $head);
+    return array($d.$head, $tail);
+  }
+
+  /**
+   * Join one or more path components intelligently, in the same was that
+   * Python 3.6's os.path.join() does.
+   *
+   * @param ...     One or more path components.
+   */
+  public static function joinPath($path /* , ...$paths */) {
+    $path = (string)$path;
+    $paths = func_get_args();
+    array_shift($paths);
+
+    if (phutil_is_windows()) {
+      $sep = '\\';
+      $altsep = '/';
+      list($result_drive, $result_path) = self::splitDrive($path);
+      foreach ($paths as $p) {
+        $p = (string)$p;
+        list($p_drive, $p_path) = self::splitDrive($p);
+        if ($p_path && ($p_path[0] == $sep || $p_path[0] == $altsep)) {
+          // Second path is absolute
+          if ($p_drive || !$result_drive) {
+            $result_drive = $p_drive;
+          }
+          $result_path = $p_path;
+          continue;
+
+        } else if ($p_drive && $p_drive != $result_drive) {
+          if (strtolower($p_drive) != strtolower($result_drive)) {
+            // Different drives => ignore the first path entirely
+            $result_drive = $p_drive;
+            $result_path = $p_path;
+            continue;
+          }
+          // Same drive in different case
+          $result_drive = $p_drive;
+        }
+
+        // Second path is relative to the first
+        if ($result_path &&
+            substr($result_path, -1) != $sep &&
+            substr($result_path, -1) != $altsep) {
+          $result_path .= $sep;
+        }
+
+        $result_path .= $p_path;
+      }
+
+      // add separator between UNC and non-absolute path
+      if ($result_path &&
+          $result_path[0] != $sep &&
+          $result_path[0] != $altsep &&
+          $result_drive &&
+          substr($result_drive, -1) != ':') {
+        return $result_drive.$sep.$result_path;
+      }
+
+      return $result_drive.$result_path;
+
+    } else {
+      $sep = '/';
+      $result_path = $path;
+      foreach ($paths as $p) {
+        if ($p && $p[0] == $sep) {
+          $result_path = $p;
+        } else if (!$result_path || substr($result_path, -1) == $sep) {
+          $result_path .= $p;
+        } else {
+          $result_path .= $sep.$p;
+        }
+      }
+
+      return $result_path;
+    }
+  }
 
   /**
    * Locates the full path that an executable binary (like `git` or `svn`) is at
@@ -984,24 +1124,57 @@ final class Filesystem extends Phobject {
    * @task    exec
    */
   public static function resolveBinary($binary) {
-    if (phutil_is_windows()) {
-      list($err, $stdout) = exec_manual('where %s', $binary);
-      $stdout = phutil_split_lines($stdout);
-
-      // If `where %s` could not find anything, check for relative binary
-      if ($err) {
-        $path = self::resolvePath($binary);
-        if (self::pathExists($path)) {
-          return $path;
-        }
-        return null;
+    // If we're given a path with a directory part, look it up directly rather
+    // than referring to PATH directories. This includes checking relative to
+    // the current directory, e.g. ./script
+    if (idx(self::splitPath($binary), 0)) {
+      if (is_executable($binary) && !is_dir($binary)) {
+        return $binary;  // returning relative path is consistent with ``which``
       }
-      $stdout = head($stdout);
-    } else {
-      list($err, $stdout) = exec_manual('which %s', $binary);
+      return null;
     }
 
-    return $err === 0 ? trim($stdout) : null;
+    $path = explode(PATH_SEPARATOR, nonempty(getenv('PATH'), ''));
+    if (!$path) {
+      return null;
+    }
+
+    $files = array();
+    if (phutil_is_windows()) {
+      if (!in_array(getcwd(), $path)) {
+        // The current directory takes precedence on Windows.
+        array_unshift($path, getcwd());
+      }
+
+      // PATHEXT is necessary to check on Windows.
+      $pathext = explode(PATH_SEPARATOR, nonempty(getenv('PATHEXT'), ''));
+      foreach ($pathext as $ext) {
+        // See if the given file matches any of the expected path extensions.
+        // This will allow us to short circuit when given "python.exe".
+        // If it does match, only test that one, otherwise we have to try
+        // others.
+        if (strlen($binary) >= strlen($ext) &&
+            stripos($binary, $ext, strlen($binary) - strlen($ext)) !== false) {
+          $files = array($binary);
+          break;
+        }
+        $files[] = $binary.$ext;
+      }
+    } else {
+      // On other platforms you don't have things like PATHEXT to tell you
+      // what file suffixes are executable, so just pass on cmd as-is.
+      $files[] = $binary;
+    }
+
+    foreach ($path as $dir) {
+      foreach ($files as $file) {
+        $candidate = self::joinPath($dir, $file);
+        if (is_executable($candidate) && !is_dir($candidate)) {
+          return $candidate;
+        }
+      }
+    }
+    return null;
   }
 
 
@@ -1033,6 +1206,55 @@ final class Filesystem extends Phobject {
     return ($u == $v);
   }
 
+  /**
+   * Split a pathname into drive/UNC sharepoint and relative path specifiers.
+   * Returns a 2-tuple (drive_or_unc, path); either part may be empty. Useful
+   * on Windows; on POSIX, the drive is always empty.
+   *
+   * If you assign
+   *     $result = splitDrive($p)
+   * It is always true that:
+   *     $result[0].$result[1] == $p
+   *
+   * If the path contained a drive letter, drive_or_unc will contain everything
+   * up to and including the colon. E.g. splitDrive("c:/dir") returns
+   * ("c:", "/dir") If the path contained a UNC path, the drive_or_unc will
+   * contain the host name and share up to but not including the fourth
+   * directory separator character. e.g. splitDrive("//host/computer/dir")
+   * returns ("//host/computer", "/dir"). Paths cannot contain both a drive
+   * letter and a UNC path.
+   */
+  public static function splitDrive($p) {
+    $p = (string)$p;
+    if (phutil_is_windows() && strlen($p) >= 2) {
+      $sep = '\\';
+      $normp = str_replace('/', $sep, $p);
+      if (substr($normp, 0, 2) == $sep.$sep && substr($normp, 2, 1) != $sep) {
+        // is a UNC path:
+        // vvvvvvvvvvvvvvvvvvvv drive letter or UNC path
+        // \\machine\mountpoint\directory\etc\...
+        //           directory ^^^^^^^^^^^^^^^
+        $index = strpos($normp, $sep, 2);
+        if ($index == false) {
+          return array('', $p);
+        }
+        $index2 = strpos($normp, $sep, $index + 1);
+        // a UNC path can't have two slashes in a row
+        // (after the initial two)
+        if ($index2 == $index + 1) {
+          return array('', $p);
+        }
+        if ($index2 == false) {
+          $index2 = strlen($p);
+        }
+        return array(substr($p, 0, $index2), substr($p, $index2));
+      }
+      if ($normp[1] == ':') {
+        return array(substr($p, 0, 2), substr($p, 2));
+      }
+    }
+    return array('', $p);
+  }
 
 /* -(  Assert  )------------------------------------------------------------- */
 
