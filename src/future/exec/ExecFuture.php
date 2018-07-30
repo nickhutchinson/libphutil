@@ -75,6 +75,10 @@ final class ExecFuture extends PhutilExecutableFuture {
     $argv = func_get_args();
     $this->command = call_user_func_array('csprintf', $argv);
     $this->stdin = new PhutilRope();
+
+    // Use temporary files instead of pipes for reading subprocess
+    // stdout/stderr due to PHP shortcomings.
+    $this->useWindowsFileStreams = phutil_is_windows();
   }
 
 
