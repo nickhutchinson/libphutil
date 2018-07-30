@@ -640,6 +640,9 @@ final class ExecFuture extends PhutilExecutableFuture {
         $this->windowsStdoutTempFile = new TempFile();
         $this->windowsStderrTempFile = new TempFile();
 
+        $this->windowsStdoutTempFile->setIgnoreRemovalFailure(true);
+        $this->windowsStderrTempFile->setIgnoreRemovalFailure(true);
+
         $spec = array(
           0 => self::$descriptorSpec[0],  // stdin
           1 => fopen($this->windowsStdoutTempFile, 'wb'),  // stdout

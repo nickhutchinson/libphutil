@@ -19,6 +19,7 @@ final class TempFile extends Phobject {
   private $dir;
   private $file;
   private $preserve;
+  private $ignoreRemovalFailure;
   private $destroyed = false;
 
 /* -(  Creating a Temporary File  )------------------------------------------ */
@@ -70,6 +71,21 @@ final class TempFile extends Phobject {
   }
 
 
+  /**
+   * Normally, failure to remove the file is considered to be an exception, which
+   * will fail the process with an error exit code.  However, Windows loves to hold
+   * file locks, preventing the deletion of files.
+   *
+   * @param bool True to ignore failure removing the file.
+   * @return this
+   * @task config
+   */
+  public function setIgnoreRemovalFailure($ignore) {
+    $this->ignoreRemovalFailure = $ignore;
+    return $this;
+  }
+
+
 /* -(  Internals  )---------------------------------------------------------- */
 
 
@@ -100,13 +116,19 @@ final class TempFile extends Phobject {
       return;
     }
 
-    Filesystem::remove($this->dir);
+    try {
+      @Filesystem::remove($this->dir);
 
-    // NOTE: tempnam() doesn't guarantee it will return a file inside the
-    // directory you passed to the function, so we make sure to nuke the file
-    // explicitly.
+      // NOTE: tempnam() doesn't guarantee it will return a file inside the
+      // directory you passed to the function, so we make sure to nuke the file
+      // explicitly.
 
-    Filesystem::remove($this->file);
+      @Filesystem::remove($this->file);
+    } catch (Exception $ex) {
+      if (!$this->ignoreRemovalFailure) {
+        throw $ex;
+      }
+    }
 
     $this->file = null;
     $this->dir = null;
