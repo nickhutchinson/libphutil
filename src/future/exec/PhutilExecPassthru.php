@@ -65,12 +65,6 @@ final class PhutilExecPassthru extends PhutilExecutableFuture {
     $spec  = array(STDIN, STDOUT, STDERR);
     $pipes = array();
 
-    if ($command instanceof PhutilCommandString) {
-      $unmasked_command = $command->getUnmaskedString();
-    } else {
-      $unmasked_command = $command;
-    }
-
     if ($this->hasEnv()) {
       $env = $this->getEnv();
     } else {
@@ -80,12 +74,23 @@ final class PhutilExecPassthru extends PhutilExecutableFuture {
     $cwd = $this->getCWD();
 
     $options = array();
+
     if (phutil_is_windows()) {
-      // Without 'bypass_shell', things like launching vim don't work properly,
-      // and we can't execute commands with spaces in them, and all commands
-      // invoked from git bash fail horridly, and everything is a mess in
-      // general.
-      $options['bypass_shell'] = true;
+      if ($command instanceof PhutilCommandString) {
+        $unmasked_command = $command->getUnmaskedString();
+        $options['bypass_shell'] =
+          $command->getEscapingMode() != PhutilCommandString::MODE_WIN_CMD;
+      } else {
+        $unmasked_command = $command;
+        $options['bypass_shell'] = true;
+      }
+
+    } else {
+      if ($command instanceof PhutilCommandString) {
+        $unmasked_command = $command->getUnmaskedString();
+      } else {
+        $unmasked_command = $command;
+      }
     }
 
     $trap = new PhutilErrorTrap();
