@@ -616,6 +616,11 @@ final class ExecFuture extends PhutilExecutableFuture {
           $options['bypass_shell'] = true;
         }
 
+        $unmasked_command =
+          dirname(phutil_get_library_root('phutil'))
+          .'\bin\PhutilLauncher.exe '
+          .$unmasked_command;
+
       } else {
         if ($this->command instanceof PhutilCommandString) {
           $unmasked_command = $this->command->getUnmaskedString();

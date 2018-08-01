@@ -51,7 +51,7 @@ final class PhutilCommandString extends Phobject {
     switch ($mode) {
       case self::MODE_DEFAULT:
         return phutil_is_windows()
-          ? self::escapeWindowsCMD($value)
+          ? self::escapeWindowsArgv($value)
           : escapeshellarg($value);
       case self::MODE_POWERSHELL:
         return self::escapePowershell($value);
