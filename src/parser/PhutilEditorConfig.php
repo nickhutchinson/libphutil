@@ -104,6 +104,11 @@ final class PhutilEditorConfig extends Phobject {
    * @return map<string, wild>
    */
   public function getProperties($path) {
+    if (phutil_is_windows()) {
+      // .editorconfig requires POSIX path separators.
+      $path = str_replace('\\', '/', $path);
+    }
+
     $configs = $this->getEditorConfigs($path);
     $matches = array();
 

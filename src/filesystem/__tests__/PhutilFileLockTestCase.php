@@ -16,6 +16,11 @@ final class PhutilFileLockTestCase extends PhutilTestCase {
     // When a process is holding a lock, other processes should be unable
     // to acquire it.
 
+    if (phutil_is_windows()) {
+      $this->assertSkipped(pht("This test doesn't work on Windows."));
+      return;
+    }
+
     $file = new TempFile();
     $hold = $this->holdLock($file);
 
@@ -44,6 +49,11 @@ final class PhutilFileLockTestCase extends PhutilTestCase {
   public function testInProcessHolding() {
     // We should be unable to lock a file if another process is holding the
     // lock.
+
+    if (phutil_is_windows()) {
+      $this->assertSkipped(pht("This test doesn't work on Windows."));
+      return;
+    }
 
     $file = new TempFile();
     $lock = PhutilFileLock::newForPath($file);
