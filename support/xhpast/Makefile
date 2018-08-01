@@ -1,3 +1,15 @@
+ifeq ($(OS),Windows_NT)
+	RM    = sh -c 'rm -rf "$$@"' ''
+	CP    = sh -c 'cp -f "$$@"' ''
+	TOUCH = sh -c 'touch "$$@"' ''
+	EXE   = .exe
+else
+	RM    = rm -fr
+	CP    = cp -f
+	TOUCH = touch
+	EXE   =
+endif
+
 BISONFLAGS = --verbose -Wall
 CPPFLAGS   = -fPIC -Wall
 FLEXFLAGS  = -CFr
@@ -18,25 +30,25 @@ ifdef STATIC
 	CPPFLAGS += -static
 endif
 
-ifdef MSYSTEM
-	CPPFLAGS += -static-libgcc -static-libstdc++
+ifeq ($(OS),Windows_NT)
+	CPPFLAGS += -static-libgcc -static-libstdc++ -Wl,--no-insert-timestamp
 endif
 
 ROOT = ../../src/parser/xhpast
 
 .PHONY: all
-all: xhpast
+all: xhpast$(EXE)
 
 clean:
-	rm -f xhpast parser.yacc.output libxhpast.a *.o
+	$(RM) xhpast$(EXE) parser.yacc.output libxhpast.a *.o
 
 cleanall: clean
-	rm -f scanner.lex.hpp scanner.lex.cpp parser.yacc.hpp parser.yacc.cpp
-	rm -f node_names.hpp parser_nodes.php
+	$(RM) scanner.lex.hpp scanner.lex.cpp parser.yacc.hpp parser.yacc.cpp
+	$(RM) node_names.hpp parser_nodes.php
 
 .PHONY: install
-install: xhpast
-	cp xhpast $(ROOT)/bin/xhpast
+install: xhpast$(EXE)
+	$(CP) xhpast$(EXE) $(ROOT)/bin/xhpast$(EXE)
 
 .PHONY: parser scanner
 
@@ -49,7 +61,7 @@ ifndef SKIP_SCANNER
 	@echo '/* @gen''er''ated */' >> $*.lex.hpp
 	@echo '/* @gen''er''ated */' >> $*.lex.cpp
 else
-	touch $*.lex.hpp $*.lex.cpp
+	$(TOUCH) $*.lex.hpp $*.lex.cpp
 endif
 
 %.yacc.hpp %.yacc.cpp: %.y
@@ -58,7 +70,7 @@ ifndef SKIP_PARSER
 	@echo '/* @gen''er''ated */' >> $*.yacc.hpp
 	@echo '/* @gen''er''ated */' >> $*.yacc.cpp
 else
-	touch $*.yacc.hpp $*.yacc.cpp
+	$(TOUCH) $*.yacc.hpp $*.yacc.cpp
 endif
 
 %.o: %.cpp
@@ -73,5 +85,5 @@ scanner.lex.o: parser.yacc.hpp node_names.hpp scanner.lex.hpp
 libxhpast.a: scanner.lex.o parser.yacc.o
 	$(AR) -crs $@ $^
 
-xhpast: xhpast.cpp libxhpast.a
+xhpast$(EXE): xhpast.cpp libxhpast.a
 	$(CXX) $(CPPFLAGS) -o $@ $^
