@@ -17,7 +17,7 @@ final class PhutilCsprintfTestCase extends PhutilTestCase {
       'svn+ssh://domain.com/path/' => true,
       '`rm -rf`' => false,
       '$VALUE' => phutil_is_windows(),
-      '%VALUE%' => !phutil_is_windows(),
+      '%VALUE%' => phutil_is_windows(),
     );
 
     foreach ($inputs as $input => $expect_same) {
@@ -30,6 +30,13 @@ final class PhutilCsprintfTestCase extends PhutilTestCase {
     }
   }
 
+  public function testDefaultEscaping() {
+    $cmd = csprintf('%s', '#"');
+    $this->assertEqual(
+      phutil_is_windows() ? '"#\""' : '\'#"\'',
+      (string)$cmd);
+  }
+
   public function testPowershell() {
     $cmd = csprintf('%s', "\n");
     $cmd->setEscapingMode(PhutilCommandString::MODE_POWERSHELL);
@@ -39,12 +46,12 @@ final class PhutilCsprintfTestCase extends PhutilTestCase {
       (string)$cmd);
   }
 
-  public function testNoPowershell() {
+  public function testCmd() {
     $cmd = csprintf('%s', '#"');
-    $cmd->setEscapingMode(PhutilCommandString::MODE_DEFAULT);
+    $cmd->setEscapingMode(PhutilCommandString::MODE_WIN_CMD);
 
     $this->assertEqual(
-      phutil_is_windows() ? '^"#\^"^"' : '\'#"\'',
+      '^"#\^"^"',
       (string)$cmd);
   }
 
