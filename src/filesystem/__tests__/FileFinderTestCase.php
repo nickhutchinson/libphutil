@@ -128,6 +128,11 @@ final class FileFinderTestCase extends PhutilTestCase {
     // Fill a temporary directory with all this magic garbage so we don't have
     // to check a bunch of files with backslashes in their names into version
     // control.
+
+    if (phutil_is_windows()) {
+      $this->assertSkipped('Windows restricts filename characters');
+    }
+
     $tmp_dir = Filesystem::createTemporaryDirectory();
 
     $crazy_magic = array(

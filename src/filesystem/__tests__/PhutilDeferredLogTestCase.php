@@ -78,6 +78,9 @@ final class PhutilDeferredLogTestCase extends PhutilTestCase {
   }
 
   public function testLogWriteFailure() {
+    if (phutil_is_windows()) {
+      $this->assertSkipped('This test does not work on Windows');
+    }
     $caught = null;
     try {
       if (phutil_is_hiphop_runtime()) {
