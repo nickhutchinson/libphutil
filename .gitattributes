@@ -1,0 +1,16 @@
+*.php eol=lf
+
+src/aphront/multipartparser/__tests__/data/** -text
+src/console/__tests__/wrap/** -text
+src/filesystem/__tests__/data/** -text
+src/lexer/__tests__/php/** -text
+src/lexer/__tests__/shell/** -text
+src/markup/engine/__tests__/remarkup/** -text
+src/markup/syntax/highlighter/__tests__/data/** -text
+src/markup/syntax/highlighter/__tests__/phpfragment/** -text
+src/markup/syntax/highlighter/__tests__/xhpast/** -text
+src/parser/__tests__/docblock/** -text
+src/parser/xhpast/__tests__/data/** -text
+src/parser/xhpast/api/__tests__/namespace/** -text
+src/utils/__tests__/cowsay/** -text
+src/utils/__tests__/hashingiterator/** -text
