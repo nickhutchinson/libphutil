@@ -43,16 +43,19 @@ final class FilesystemTestCase extends PhutilTestCase {
   }
 
   public function testWriteUniqueFile() {
-    $tmp = new TempFile();
-    $dir = dirname($tmp);
+    $dir = Filesystem::createTemporaryDirectory();
+    $base = $dir.'/file';
+    try {
+      // Writing an empty file should work.
+      $f = Filesystem::writeUniqueFile($base, '');
+      $this->assertEqual('', Filesystem::readFile($f));
 
-    // Writing an empty file should work.
-    $f = Filesystem::writeUniqueFile($dir, '');
-    $this->assertEqual('', Filesystem::readFile($f));
-
-    // File name should be unique.
-    $g = Filesystem::writeUniqueFile($dir, 'quack');
-    $this->assertTrue($f != $g);
+      // File name should be unique.
+      $g = Filesystem::writeUniqueFile($base, 'quack');
+      $this->assertTrue($f != $g);
+    } finally {
+      Filesystem::remove($dir);
+    }
   }
 
   public function testReadRandomBytes() {

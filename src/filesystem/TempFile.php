@@ -35,14 +35,19 @@ final class TempFile extends Phobject {
    * @task create
    */
   public function __construct($filename = null, $root_directory = null) {
-    $this->dir = Filesystem::createTemporaryDirectory(
-      '',
-      0700,
-      $root_directory);
-    if ($filename === null) {
-      $this->file = tempnam($this->dir, getmypid().'-');
+    if ($filename === null && $root_directory === null) {
+      $this->dir = null;
+      $this->file = tempnam(sys_get_temp_dir(), getmypid().'-');
     } else {
-      $this->file = $this->dir.'/'.$filename;
+      $this->dir = Filesystem::createTemporaryDirectory(
+        '',
+        0700,
+        $root_directory);
+      if ($filename === null) {
+        $this->file = tempnam($this->dir, getmypid().'-');
+      } else {
+        $this->file = $this->dir.'/'.$filename;
+      }
     }
 
     // If we fatal (e.g., call a method on NULL), destructors are not called.
@@ -100,7 +105,9 @@ final class TempFile extends Phobject {
       return;
     }
 
-    Filesystem::remove($this->dir);
+    if ($this->dir) {
+        Filesystem::remove($this->dir);
+    }
 
     // NOTE: tempnam() doesn't guarantee it will return a file inside the
     // directory you passed to the function, so we make sure to nuke the file

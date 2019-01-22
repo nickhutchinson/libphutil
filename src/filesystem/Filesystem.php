@@ -173,6 +173,11 @@ final class Filesystem extends Phobject {
     assert_stringlike($data);
     // Try 'file', 'file.1', 'file.2', etc., until something doesn't exist.
 
+    $dir = dirname($full_path);
+    self::assertExists($dir);
+    self::assertIsDirectory($dir);
+    self::assertWritable($dir);
+
     while (true) {
       $try_path = $full_path;
       if ($sequence) {
