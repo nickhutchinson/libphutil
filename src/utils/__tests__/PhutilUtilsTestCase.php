@@ -671,9 +671,17 @@ final class PhutilUtilsTestCase extends PhutilTestCase {
         array('foo' => array('bar' => array('baz' => array())))));
 
     // Objects
-    $this->assertEqual(
-      "stdClass::__set_state(array(\n))",
-      phutil_var_export(new stdClass()));
+    if (version_compare(phpversion(), '7.3.0', '>=')) {
+      // https://github.com/php/php-src/commit/e4e9cd835550990a6b8df7c61d59b6cc0da9b5b2
+      $this->assertEqual(
+        "(object) array(\n)",
+        phutil_var_export(new stdClass()));
+    } else {
+      $this->assertEqual(
+        "stdClass::__set_state(array(\n))",
+        phutil_var_export(new stdClass()));
+    }
+
     $this->assertEqual(
       "PhutilTestPhobject::__set_state(array(\n))",
       phutil_var_export(new PhutilTestPhobject()));
